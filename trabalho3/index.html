@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Jardim VR - Oficina SENAI</title>
+
+  <!-- A-Frame 1.4.2 VR Framework -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <!-- Tailwind CSS para Interface HUD -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Fontes Google -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      margin: 0;
+      overflow: hidden;
+      user-select: none;
+    }
+    .a-enter-vr {
+      bottom: 20px !important;
+      right: 20px !important;
+    }
+    @keyframes nodFlash {
+      0% { transform: scale(0.9); opacity: 0; }
+      50% { transform: scale(1.05); opacity: 1; }
+      100% { transform: scale(1); opacity: 0; }
+    }
+    .nod-indicator-active {
+      animation: nodFlash 0.75s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-white">
+
+  <!-- ========================================== -->
+  <!-- TAILWIND UI OVERLAY (INTERFACE HUD)        -->
+  <!-- ========================================== -->
+  <div id="ui-overlay" class="fixed inset-0 pointer-events-none z-10 flex flex-col justify-between p-4 md:p-6">
+    
+    <!-- Topo: Logotipo e Indicador de Movimento -->
+    <div class="flex items-center justify-between w-full max-w-4xl mx-auto pointer-events-auto bg-slate-900/85 backdrop-blur-md p-3.5 md:p-4 rounded-2xl border border-slate-700/60 shadow-2xl">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-extrabold text-white text-xl shadow-lg">
+          S
+        </div>
+        <div>
+          <h1 class="text-sm md:text-base font-bold text-slate-100 leading-tight">Jardim VR - Oficina SENAI</h1>
+          <p class="text-[11px] text-slate-400">Você está sentado no balanço</p>
+        </div>
+      </div>
+
+      <!-- Badge de Status do Balanço -->
+      <div class="flex items-center gap-3 bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700">
+        <div class="flex flex-col text-right">
+          <span class="text-[9px] text-slate-400 uppercase tracking-wider font-semibold">Balanço</span>
+          <span id="swing-status-text" class="text-xs font-bold text-amber-400">Parado no Balanço</span>
+        </div>
+        <div id="swing-pulse" class="w-3 h-3 rounded-full bg-amber-400/50"></div>
+      </div>
+    </div>
+
+    <!-- Centro: Alerta Visual ao Ativar o Botão -->
+    <div class="self-center my-auto pointer-events-none">
+      <div id="nod-badge" class="hidden opacity-0 bg-emerald-500 text-slate-950 font-extrabold text-sm md:text-base px-6 py-3.5 rounded-full shadow-2xl border-2 border-emerald-300 flex items-center gap-2">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+        </svg>
+        <span>Olhar detectado! Impulsionando balanço...</span>
+      </div>
+    </div>
+
+    <!-- Rodapé: Instruções e Botões para Desktop -->
+    <div class="w-full max-w-xl mx-auto pointer-events-auto flex flex-col gap-2.5">
+      
+      <!-- Card de Instrução -->
+      <div class="bg-slate-900/85 backdrop-blur-md p-3.5 rounded-2xl border border-slate-700/60 shadow-xl text-center">
+        <div class="flex items-center justify-center gap-2 text-indigo-400 font-bold text-xs md:text-sm mb-1">
+          <svg class="w-4 h-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+          </svg>
+          <span>Instrução de Uso no VR / Mobile:</span>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Olhe para o <strong class="text-amber-300 font-semibold">botão 3D no chão à sua frente</strong> para dar impulso!
+        </p>
+      </div>
+
+      <!-- Controle de Simulação para Telas Não-VR -->
+      <div class="flex items-center justify-center gap-3">
+        <button id="btn-impulse" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 transition-all text-white font-bold text-xs md:text-sm py-2.5 px-4 rounded-xl shadow-lg border border-blue-400/30 flex items-center justify-center gap-2">
+          <span>🚀 Impulsionar Balanço (+15°)</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ========================================== -->
+  <!-- COMPONENTES CUSTOMIZADOS A-FRAME           -->
+  <!-- ========================================== -->
+  <script>
+    AFRAME.registerComponent('flower-generator', {
+      schema: {
+        count: { type: 'int', default: 260 },
+        radius: { type: 'number', default: 32 }
+      },
+      init: function () {
+        const colors = ['#FF2D55', '#FFCC00', '#AF52DE', '#FF9500', '#007AFF', '#FF3B30', '#E040FB', '#FFFFFF', '#F48FB1'];
+        const el = this.el;
+
+        for (let i = 0; i < this.data.count; i++) {
+          const r = 2.2 + Math.sqrt(Math.random()) * (this.data.radius - 2.2);
+          const angle = Math.random() * Math.PI * 2;
+          const x = Math.cos(angle) * r;
+          const z = Math.sin(angle) * r;
+
+          if (x > -2.2 && x < 2.2 && z > -7.0 && z < 1.5) continue;
+
+          const flowerGroup = document.createElement('a-entity');
+          const scale = 0.5 + Math.random() * 0.55;
+          const rotY = Math.random() * 360;
+
+          flowerGroup.setAttribute('position', `${x.toFixed(2)} 0 ${z.toFixed(2)}`);
+          flowerGroup.setAttribute('rotation', `0 ${rotY.toFixed(1)} 0`);
+          flowerGroup.setAttribute('scale', `${scale} ${scale} ${scale}`);
+
+          const stemHeight = 0.35 + Math.random() * 0.3;
+          const stem = document.createElement('a-cylinder');
+          stem.setAttribute('radius', '0.018');
+          stem.setAttribute('height', stemHeight);
+          stem.setAttribute('color', '#2E7D32');
+          stem.setAttribute('position', `0 ${stemHeight / 2} 0`);
+          flowerGroup.appendChild(stem);
+
+          const centerColor = Math.random() > 0.2 ? '#FFD54F' : '#3E2723';
+          const center = document.createElement('a-sphere');
+          center.setAttribute('radius', '0.06');
+          center.setAttribute('color', centerColor);
+          center.setAttribute('position', `0 ${stemHeight} 0`);
+          flowerGroup.appendChild(center);
+
+          const petalColor = colors[Math.floor(Math.random() * colors.length)];
+          const petalCount = 6 + Math.floor(Math.random() * 3);
+          
+          for (let p = 0; p < petalCount; p++) {
+            const petalRot = (360 / petalCount) * p;
+            const petal = document.createElement('a-sphere');
+            petal.setAttribute('radius', '0.045');
+            petal.setAttribute('scale', '1 0.25 2.2');
+            petal.setAttribute('color', petalColor);
+
+            const rad = (petalRot * Math.PI) / 180;
+            const px = Math.sin(rad) * 0.08;
+            const pz = Math.cos(rad) * 0.08;
+
+            petal.setAttribute('position', `${px} ${stemHeight} ${pz}`);
+            petal.setAttribute('rotation', `12 ${petalRot} 0`);
+            flowerGroup.appendChild(petal);
+          }
+
+          const leaf = document.createElement('a-cone');
+          leaf.setAttribute('radius-bottom', '0.04');
+          leaf.setAttribute('radius-top', '0.001');
+          leaf.setAttribute('height', '0.18');
+          leaf.setAttribute('color', '#1B5E20');
+          leaf.setAttribute('position', `0.03 ${stemHeight * 0.4} 0`);
+          leaf.setAttribute('rotation', '0 0 -50');
+          flowerGroup.appendChild(leaf);
+
+          el.appendChild(flowerGroup);
+        }
+      }
+    });
+
+    AFRAME.registerComponent('swing-controller', {
+      schema: {
+        speed: { type: 'number', default: 2.1 },
+        damping: { type: 'number', default: 0.992 },
+        maxAngle: { type: 'number', default: 55 }
+      },
+      init: function () {
+        this.amplitude = 0.0;
+        this.phase = 0;
+        this.currentAngle = 0;
+
+        this.el.addEventListener('push-swing', (e) => {
+          const boost = (e.detail && e.detail.amount) ? e.detail.amount : 15;
+          this.amplitude = Math.min(this.amplitude + boost, this.data.maxAngle);
+        });
+      },
+      tick: function (time, timeDelta) {
+        if (!timeDelta) return;
+        const dt = timeDelta / 1000;
+
+        this.phase += dt * this.data.speed;
+        this.amplitude *= Math.pow(this.data.damping, timeDelta / 16.6);
+
+        if (this.amplitude < 0.1) this.amplitude = 0;
+
+        this.currentAngle = Math.sin(this.phase) * this.amplitude;
+        this.el.setAttribute('rotation', `${this.currentAngle.toFixed(2)} 0 0`);
+
+        const statusText = document.getElementById('swing-status-text');
+        const pulse = document.getElementById('swing-pulse');
+        if (statusText) {
+          if (this.amplitude > 0.8) {
+            statusText.innerText = `Balançando (${Math.round(this.amplitude)}°)`;
+            statusText.className = "text-xs font-bold text-emerald-400";
+            if (pulse) pulse.className = "w-3 h-3 rounded-full bg-emerald-400 animate-ping";
+          } else {
+            statusText.innerText = "Parado no Balanço";
+            statusText.className = "text-xs font-bold text-amber-400";
+            if (pulse) pulse.className = "w-3 h-3 rounded-full bg-amber-400/50";
+          }
+        }
+      }
+    });
+  </script>
+
+  <!-- ========================================== -->
+  <!-- CENA WEBVR (A-FRAME)                       -->
+  <!-- ========================================== -->
+  <a-scene 
+    renderer="antialias: true; colorManagement: true; exposure: 1.1;"
+    far="200"
+    shadow="type: pcfsoft"
+    vr-mode-ui="enabled: true">
+
+    <!-- ILUMINAÇÃO DE PÔR DO SOL -->
+    <a-light type="directional" 
+             color="#FFB74D" 
+             intensity="1.4" 
+             position="0 8 -45" 
+             castshadow="true" 
+             shadow-map-width="2048" 
+             shadow-map-height="2048"
+             shadow-camera-far="60"
+             shadow-camera-top="15"
+             shadow-camera-bottom="-15"
+             shadow-camera-left="-15"
+             shadow-camera-right="15">
+    </a-light>
+    
+    <a-light type="ambient" color="#8072A3" intensity="0.65"></a-light>
+    <a-light type="hemisphere" sky-color="#FF9E80" ground-color="#2E7D32" intensity="0.55"></a-light>
+
+    <!-- CÉU -->
+    <a-sky color="#FF7043"></a-sky>
+
+    <!-- SOL NO HORIZONTE -->
+    <a-entity position="0 4.5 -52">
+      <a-sphere radius="5.5" color="#FFF59D" material="shader: flat; emissive: #FFF59D; emissiveIntensity: 1"></a-sphere>
+      <a-sphere radius="8.5" color="#FFB74D" material="shader: flat; transparent: true; opacity: 0.35"></a-sphere>
+      <a-sphere radius="13.0" color="#FF7043" material="shader: flat; transparent: true; opacity: 0.18"></a-sphere>
+    </a-entity>
+
+    <!-- GRAMADO E COLINAS -->
+    <a-plane position="0 0 0" 
+             rotation="-90 0 0" 
+             width="120" 
+             height="120" 
+             color="#388E3C" 
+             roughness="0.8" 
+             metalness="0.05" 
+             shadow="receive: true">
+    </a-plane>
+
+    <a-entity id="hills">
+      <a-sphere position="-25 -4 -40" radius="16" scale="2 0.5 1" color="#2E7D32" roughness="0.9"></a-sphere>
+      <a-sphere position="22 -5 -45" radius="18" scale="2.2 0.5 1" color="#2E7D32" roughness="0.9"></a-sphere>
+      <a-sphere position="0 -6 -50" radius="22" scale="3 0.4 1" color="#1B5E20" roughness="0.9"></a-sphere>
+    </a-entity>
+
+    <!-- CAMPO DE FLORES PROCEDURAL -->
+    <a-entity flower-generator="count: 260; radius: 30"></a-entity>
+
+    <!-- PLACA "OFICINA SENAI" -->
+    <a-entity id="senai-sign" position="-2.4 0 -3.2" rotation="0 22 0" shadow="cast: true; receive: true">
+      <a-cylinder position="-0.95 0.9 0" radius="0.055" height="1.8" color="#4E342E" roughness="0.9"></a-cylinder>
+      <a-cylinder position="0.95 0.9 0" radius="0.055" height="1.8" color="#4E342E" roughness="0.9"></a-cylinder>
+
+      <a-box position="0 1.35 0" width="2.4" height="0.85" depth="0.08" color="#5D4037" roughness="0.8" shadow="cast: true">
+        <a-box position="0 0 0.042" width="2.26" height="0.72" depth="0.01" color="#3E2723"></a-box>
+        <a-box position="0 0 0.048" width="2.2" height="0.66" depth="0.005" color="#EFEBE9"></a-box>
+
+        <a-text value="OFICINA SENAI" align="center" position="0 0.1 0.06" scale="0.9 0.9 0.9" color="#005C9E" font="roboto"></a-text>
+
+        <a-text value="Ambiente de Inovacao &amp; VR" 
+                align="center" 
+                position="0 -0.16 0.06" 
+                scale="0.6 0.6 0.6"
+                color="#37474F" 
+                font="roboto">
+        </a-text>
+
+        <a-box position="0 -0.26 0.055" width="2.0" height="0.035" depth="0.005" color="#005C9E"></a-box>
+      </a-box>
+    </a-entity>
+
+    <!-- BOTÃO INTERATIVO 3D (NO CHÃO, MENOR, CENTRALIZADO E MAIS AFASTADO) -->
+    <a-entity id="vr-swing-button" position="0 0.08 -6.0" rotation="-35 0 0">
+      <a-cylinder class="interactable" radius="0.15" height="0.05" rotation="90 0 0" color="#FF9800" shadow="cast: true"
+                  animation__mouseenter="property: scale; to: 1.2 1.2 1.2; dur: 200"
+                  animation__mouseleave="property: scale; to: 1 1 1; dur: 200">
+      </a-cylinder>
+      <a-text class="interactable" value="BALANCAR" align="center" position="0 0 0.03" scale="0.3 0.3 0.3" color="#FFFFFF" font="roboto"></a-text>
+    </a-entity>
+
+    <!-- ESTRUTURA DO BALANÇO E CÂMERA -->
+    <a-entity id="swing-structure" position="0 0 -2.5" shadow="cast: true; receive: true">
+      
+      <!-- Suportes Laterais -->
+      <a-cylinder position="-1.6 1.6 -0.5" rotation="15 0 -16" radius="0.08" height="3.4" color="#4E342E" roughness="0.85"></a-cylinder>
+      <a-cylinder position="-1.6 1.6 0.5" rotation="-15 0 -16" radius="0.08" height="3.4" color="#4E342E" roughness="0.85"></a-cylinder>
+      
+      <a-cylinder position="1.6 1.6 -0.5" rotation="15 0 16" radius="0.08" height="3.4" color="#4E342E" roughness="0.85"></a-cylinder>
+      <a-cylinder position="1.6 1.6 0.5" rotation="-15 0 16" radius="0.08" height="3.4" color="#4E342E" roughness="0.85"></a-cylinder>
+
+      <!-- Trave Superior -->
+      <a-cylinder position="0 3.1 0" rotation="0 0 90" radius="0.09" height="3.6" color="#3E2723" roughness="0.8"></a-cylinder>
+      <a-torus position="-0.75 3.1 0" radius="0.1" radius-tubular="0.02" color="#78909C" rotation="0 90 0"></a-torus>
+      <a-torus position="0.75 3.1 0" radius="0.1" radius-tubular="0.02" color="#78909C" rotation="0 90 0"></a-torus>
+
+      <!-- PIVÔ DE ROTAÇÃO -->
+      <a-entity id="swing-pivot" position="0 3.1 0" swing-controller>
+        
+        <!-- Cordas -->
+        <a-cylinder position="-0.75 -1.1 0" radius="0.015" height="2.2" color="#D7CCC8" roughness="0.9"></a-cylinder>
+        <a-cylinder position="0.75 -1.1 0" radius="0.015" height="2.2" color="#D7CCC8" roughness="0.9"></a-cylinder>
+
+        <!-- ASSENTO DO BALANÇO -->
+        <a-entity id="swing-seat" position="0 -2.2 0">
+          <a-box position="0 0 0" width="1.6" height="0.06" depth="0.45" color="#5D4037" roughness="0.7" shadow="cast: true"></a-box>
+          <a-box position="-0.75 0.04 0" width="0.08" height="0.05" depth="0.4" color="#3E2723"></a-box>
+          <a-box position="0.75 0.04 0" width="0.08" height="0.05" depth="0.4" color="#3E2723"></a-box>
+
+          <!-- CÂMERA DO JOGADOR -->
+          <a-camera id="camera"
+                    look-controls="pointerLockEnabled: false"
+                    wasd-controls="enabled: false"
+                    position="0 0.85 0">
+            <a-cursor
+              fuse="true"
+              fuse-timeout="900"
+              raycaster="objects: .interactable"
+              material="color: #FFD54F; shader: flat"
+              scale="0.6 0.6 0.6"
+              position="0 0 -1">
+            </a-cursor>
+          </a-camera>
+
+        </a-entity> <!-- Fim do Assento -->
+
+      </a-entity> <!-- Fim do Pivô -->
+
+    </a-entity>
+
+  </a-scene>
+
+  <!-- ========================================== -->
+  <!-- EVENTOS INTERATIVOS DO VR E HUD            -->
+  <!-- ========================================== -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const btnImpulse = document.getElementById('btn-impulse');
+      const swingPivot = document.getElementById('swing-pivot');
+      const vrButtons = document.querySelectorAll('#vr-swing-button .interactable');
+      const nodBadge = document.getElementById('nod-badge');
+
+      function triggerImpulse() {
+        if (swingPivot) {
+          swingPivot.emit('push-swing', { amount: 15 });
+        }
+        if (nodBadge) {
+          nodBadge.classList.remove('hidden', 'nod-indicator-active');
+          void nodBadge.offsetWidth;
+          nodBadge.classList.add('nod-indicator-active');
+          setTimeout(() => nodBadge.classList.add('hidden'), 850);
+        }
+      }
+
+      vrButtons.forEach((button) => button.addEventListener('click', triggerImpulse));
+
+      if (btnImpulse) {
+        btnImpulse.addEventListener('click', triggerImpulse);
+      }
+    });
+  </script>
+
+</body>
+</html>
